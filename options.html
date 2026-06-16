@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DeWeb Shield Settings</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f6f7f9;
+        color: #172026;
+      }
+
+      * { box-sizing: border-box; }
+
+      body { margin: 0; min-height: 100vh; }
+
+      main {
+        margin: 0 auto;
+        max-width: 760px;
+        padding: 40px 24px;
+      }
+
+      h1, h2, p { margin: 0; }
+      h1 { font-size: 28px; line-height: 1.2; }
+      h2 { font-size: 16px; line-height: 1.2; }
+
+      header { margin-bottom: 24px; }
+      header p { color: #526173; margin-top: 6px; }
+
+      form {
+        background: #ffffff;
+        border: 1px solid #d8dee7;
+        border-radius: 8px;
+        display: grid;
+        gap: 18px;
+        padding: 22px;
+      }
+
+      label {
+        color: #263440;
+        display: grid;
+        font-size: 13px;
+        font-weight: 700;
+        gap: 8px;
+      }
+
+      input[type="url"], textarea {
+        border: 1px solid #c9d2dd;
+        border-radius: 8px;
+        color: #18232e;
+        font: inherit;
+        min-height: 40px;
+        padding: 10px;
+        width: 100%;
+      }
+
+      textarea {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        resize: vertical;
+      }
+
+      fieldset {
+        border: 1px solid #d8dee7;
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 14px;
+      }
+
+      legend {
+        color: #617081;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0 6px;
+      }
+
+      .choice {
+        align-items: center;
+        display: flex;
+        font-weight: 600;
+        gap: 10px;
+      }
+
+      .choice input { height: 16px; width: 16px; }
+
+      footer {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: #143c5a;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        min-height: 40px;
+        padding: 0 16px;
+      }
+
+      #saved {
+        color: #2a6440;
+        font-size: 13px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DeWeb Shield</h1>
+        <p>Provider for browsing. Trusted Massa node for verification.</p>
+      </header>
+
+      <form id="settings-form">
+        <label>
+          Trusted Massa node RPC URL
+          <input id="trusted-node-url" name="trustedNodeUrl" type="url" placeholder="http://127.0.0.1:33035" required>
+        </label>
+
+        <label>
+          Provider registry URL
+          <input id="provider-registry-url" name="providerRegistryUrl" type="url" placeholder="https://raw.githubusercontent.com/massalabs/DeWeb-Providers/main/providers.yaml" required>
+        </label>
+
+        <fieldset>
+          <legend>Mode</legend>
+          <label class="choice"><input type="radio" name="mode" value="local">Local node only</label>
+          <label class="choice"><input type="radio" name="mode" value="remote">Remote trusted node</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Protection</legend>
+          <label class="choice"><input id="ask-before-unknown" type="checkbox" name="askBeforeUnknownProvider">Ask before trusting unknown provider</label>
+          <label class="choice"><input id="block-external" type="checkbox" name="blockExternalCalls">Block external calls on DeWeb sites</label>
+          <label class="choice"><input id="enforce-csp" type="checkbox" name="enforceCsp">Flag missing or loose CSP</label>
+          <label class="choice"><input id="auto-sync-providers" type="checkbox" name="autoSyncProviders">Auto-sync providers from GitHub</label>
+        </fieldset>
+
+        <section>
+          <h2>Provider registry</h2>
+          <p id="provider-registry-status">Not synced yet.</p>
+          <button id="sync-providers" type="button">Sync providers now</button>
+        </section>
+
+        <section>
+          <h2>Trusted providers</h2>
+          <textarea id="trusted-providers" rows="5" spellcheck="false"></textarea>
+        </section>
+
+        <section>
+          <h2>Site whitelist</h2>
+          <textarea id="whitelist" rows="5" spellcheck="false"></textarea>
+        </section>
+
+        <footer>
+          <button type="submit">Save settings</button>
+          <span id="saved" role="status"></span>
+        </footer>
+      </form>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

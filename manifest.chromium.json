@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "DeWeb Shield",
+  "version": "0.2.0",
+  "description": "Protect Massa DeWeb browsing with external-call blocking, CSP checks, and trusted-node integrity status.",
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "declarativeNetRequest",
+    "storage",
+    "tabs",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "injected.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "DeWeb Shield",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}
