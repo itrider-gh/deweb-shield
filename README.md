@@ -14,6 +14,9 @@ Default trusted node:
 http://127.0.0.1:33035
 ```
 
+<img width="1892" height="1033" alt="Capture d’écran 2026-06-17 161342" src="https://github.com/user-attachments/assets/5aee5d0e-d53c-4477-b3f9-8a2b505fa710" />
+
+
 ## Features
 
 - Detects likely DeWeb pages through `.massa`, DeWeb provider hosts, and Massa query parameters.
