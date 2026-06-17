@@ -6,6 +6,7 @@ const nodes = {
   badge: document.querySelector("#badge"),
   provider: document.querySelector("#provider"),
   providerTrust: document.querySelector("#provider-trust"),
+  siteTrust: document.querySelector("#site-trust"),
   trustedNode: document.querySelector("#trusted-node"),
   integrity: document.querySelector("#integrity"),
   external: document.querySelector("#external"),
@@ -14,6 +15,7 @@ const nodes = {
   reason: document.querySelector("#reason"),
   injection: document.querySelector("#injection"),
   files: document.querySelector("#files"),
+  trustBanner: document.querySelector("#trust-banner"),
   progress: document.querySelector("#progress"),
   progressBar: document.querySelector("#progress-bar"),
   progressLabel: document.querySelector("#progress-label"),
@@ -75,6 +77,7 @@ function render(state, settings) {
   nodes.site.textContent = `Site: ${state.siteKey || "unknown"}`;
   nodes.provider.textContent = state.providerHost || "unknown";
   nodes.providerTrust.textContent = state.providerTrusted ? "Registry trusted" : "Unknown";
+  nodes.siteTrust.textContent = state.whitelisted ? "Whitelisted" : "Not trusted";
   nodes.trustedNode.textContent = trustedNodeLabel(settings);
   nodes.integrity.textContent = labelIntegrity(state.integrity);
   nodes.external.textContent = `${state.externalDetectedCount || state.externalDetected?.length || 0} in code`;
@@ -91,6 +94,16 @@ function render(state, settings) {
   nodes.files.textContent = state.filesChecked
     ? `Files: ${state.filesVerified}/${state.filesChecked} verified${state.failedFile ? ` | Failed: ${state.failedFile}` : ""}`
     : "";
+  if (state.isDeWeb) {
+    nodes.trustBanner.style.display = "block";
+    nodes.trustBanner.className = `trust-banner${state.whitelisted ? " trusted" : ""}`;
+    nodes.trustBanner.textContent = state.whitelisted
+      ? "This site is whitelisted. External links are allowed and the page reloads when trust changes."
+      : "External links are disabled by default for this DeWeb site. Whitelist the site to allow them, then the page will reload.";
+  } else {
+    nodes.trustBanner.style.display = "none";
+    nodes.trustBanner.textContent = "";
+  }
   const progress = state.integrityProgress;
   if (progress && (state.integrity === "checking" || progress.cached)) {
     const percent = Number.isFinite(progress.percent)
@@ -106,7 +119,7 @@ function render(state, settings) {
     nodes.progressBar.style.width = "0%";
     nodes.progressLabel.textContent = "";
   }
-  nodes.whitelist.textContent = state.whitelisted ? "Remove trust" : "Trust and reveal more";
+  nodes.whitelist.textContent = state.whitelisted ? "Remove site trust" : "Trust this site";
   nodes.whitelist.disabled = !state.siteKey;
   nodes.recheck.disabled = !state.isDeWeb;
 
@@ -171,7 +184,12 @@ function scheduleProgressRefresh() {
 
 nodes.whitelist.addEventListener("click", async () => {
   if (!currentState?.siteKey) return;
-  await send({ type: "TOGGLE_SITE_WHITELIST", siteKey: currentState.siteKey });
+  nodes.whitelist.disabled = true;
+  const response = await send({ type: "TOGGLE_SITE_WHITELIST", siteKey: currentState.siteKey });
+  if (response?.ok && response.state) {
+    render(response.state, response.settings);
+    return;
+  }
   await refresh();
 });
 

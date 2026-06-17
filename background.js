@@ -333,6 +333,20 @@ function tabsQuery(queryInfo) {
   });
 }
 
+function reloadTab(tabId) {
+  if (usesPromiseApi) {
+    return ext.tabs.reload(tabId);
+  }
+
+  return new Promise((resolve, reject) => {
+    ext.tabs.reload(tabId, () => {
+      const error = ext.runtime.lastError;
+      if (error) reject(new Error(error.message));
+      else resolve();
+    });
+  });
+}
+
 function updateSessionRules(options) {
   if (!ext.declarativeNetRequest) {
     return Promise.resolve();
@@ -892,21 +906,30 @@ async function handleRuntimeMessage(message, sender) {
     const settings = await getSettings();
     const host = message.siteKey;
     const current = settings.whitelist[host] || {};
-    settings.whitelist[host] = { ...current, trustExternalCalls: !current.trustExternalCalls };
+    const nextTrusted = !current.trustExternalCalls;
+    settings.whitelist[host] = { ...current, trustExternalCalls: nextTrusted };
     await saveSettings(settings);
     const tabs = await tabsQuery({});
-    await Promise.all(tabs
-      .filter((tab) => tab.id !== undefined && tab.url && getTabState(tab.id).siteKey === host)
-      .map(async (tab) => {
-        externalLogByTab.delete(tab.id);
-        setTabState(tab.id, {
-          externalBlocked: 0,
-          externalDetectedCount: 0,
-          externalDetected: []
-        });
-        await refreshTabPolicy(tab.id, tab.url);
-      }));
-    return { ok: true, settings: await getSettings() };
+    const affectedTabs = tabs.filter((tab) => tab.id !== undefined && tab.url && getTabState(tab.id).siteKey === host);
+    await Promise.all(affectedTabs.map(async (tab) => {
+      externalLogByTab.delete(tab.id);
+      setTabState(tab.id, {
+        externalBlocked: 0,
+        externalDetectedCount: 0,
+        externalDetected: []
+      });
+      await refreshTabPolicy(tab.id, tab.url);
+    }));
+    await Promise.all(affectedTabs.map((tab) => reloadTab(tab.id).catch((error) => {
+      console.warn("[DeWeb Shield] Could not reload trusted site tab:", error);
+    })));
+    return {
+      ok: true,
+      state: tabId !== undefined ? getTabState(tabId) : undefined,
+      settings: await getSettings(),
+      trusted: nextTrusted,
+      reloaded: affectedTabs.length
+    };
   }
 
   return { ok: false, error: `Unknown message type: ${messageType || "missing"}` };

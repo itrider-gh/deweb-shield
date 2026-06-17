@@ -107,6 +107,24 @@
         margin-top: 6px;
       }
 
+      .trust-banner {
+        background: #fff7dc;
+        border: 1px solid #ead58b;
+        border-radius: 8px;
+        color: #5f4700;
+        display: none;
+        font-size: 13px;
+        line-height: 1.4;
+        margin-top: 12px;
+        padding: 10px;
+      }
+
+      .trust-banner.trusted {
+        background: #e4f6ec;
+        border-color: #a8dfbd;
+        color: #145a2d;
+      }
+
       .diff {
         border-top: 1px solid #e5e9f0;
         display: none;
@@ -237,6 +255,7 @@
       <section class="status-grid">
         <article><span>Provider</span><strong id="provider">unknown</strong></article>
         <article><span>Provider trust</span><strong id="provider-trust">Unknown</strong></article>
+        <article><span>Site trust</span><strong id="site-trust">Not trusted</strong></article>
         <article><span>Trusted node</span><strong id="trusted-node">127.0.0.1</strong></article>
         <article><span>Integrity</span><strong id="integrity">Unknown</strong></article>
         <article><span>External links</span><strong id="external">0 in code</strong></article>
@@ -249,6 +268,7 @@
         <p id="reason"></p>
         <p id="injection"></p>
         <p id="files"></p>
+        <div id="trust-banner" class="trust-banner"></div>
         <div id="progress" class="progress-wrap">
           <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
           <div id="progress-label" class="progress-label"></div>
