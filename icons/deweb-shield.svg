@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="DeWeb Shield">
+  <defs>
+    <linearGradient id="shield" x1="18" y1="10" x2="110" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12b5a6"/>
+      <stop offset="0.55" stop-color="#176b87"/>
+      <stop offset="1" stop-color="#143c5a"/>
+    </linearGradient>
+    <linearGradient id="core" x1="38" y1="36" x2="92" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9fff8"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#shield)" d="M64 8 108 24v32c0 29.5-17.7 53.6-44 64-26.3-10.4-44-34.5-44-64V24L64 8Z"/>
+  <path fill="none" stroke="#ffffff" stroke-opacity=".38" stroke-width="6" d="M64 17 99 30v27c0 24.2-13.9 44.7-35 54-21.1-9.3-35-29.8-35-54V30l35-13Z"/>
+  <circle cx="64" cy="64" r="25" fill="url(#core)"/>
+  <path fill="#143c5a" d="M48 78V50h9.8L64 62.5 70.2 50H80v28h-8.2V62.7l-5 9.6h-5.6l-5-9.6V78H48Z"/>
+  <circle cx="38" cy="42" r="6" fill="#ffffff"/>
+  <circle cx="90" cy="42" r="6" fill="#ffffff"/>
+  <circle cx="64" cy="96" r="6" fill="#ffffff"/>
+  <path fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" d="M43 46 57 57M85 46 71 57M64 89V78"/>
+</svg>
