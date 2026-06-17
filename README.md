@@ -77,7 +77,7 @@ Firefox:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Click "Load Temporary Add-on".
-3. Select `/home/adm-six/deweb-shield/manifest.json`.
+3. Select deweb-shield/manifest.json.
 
 Chromium:
 
@@ -85,4 +85,4 @@ Chromium:
 2. Enable developer mode.
 3. Copy `manifest.chromium.json` to `manifest.json`.
 4. Click "Load unpacked".
-5. Select `/home/adm-six/deweb-shield`.
+5. Select deweb-shield file.
