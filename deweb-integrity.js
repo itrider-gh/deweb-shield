@@ -302,6 +302,58 @@ function repairHeadCloseAfterDeWebStyle(html, report) {
   return repaired;
 }
 
+function decodeCloudflareEmail(hexValue) {
+  if (!hexValue || hexValue.length < 4 || hexValue.length % 2 !== 0 || /[^0-9a-f]/i.test(hexValue)) {
+    return "";
+  }
+
+  const key = parseInt(hexValue.slice(0, 2), 16);
+  let decoded = "";
+
+  for (let index = 2; index < hexValue.length; index += 2) {
+    decoded += String.fromCharCode(parseInt(hexValue.slice(index, index + 2), 16) ^ key);
+  }
+
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(decoded) ? decoded : "";
+}
+
+function normalizeCloudflareEmailProtection(html, report) {
+  let changed = false;
+  let valid = true;
+
+  let normalized = html.replace(
+    /<a\b(?=[^>]*\bclass=["'][^"']*\b__cf_email__\b[^"']*["'])(?=[^>]*\bdata-cfemail=["']([0-9a-f]+)["'])[^>]*>[\s\S]*?<\/a>/gi,
+    (match, encoded) => {
+      const decoded = decodeCloudflareEmail(encoded);
+      if (!decoded) {
+        valid = false;
+        return match;
+      }
+      changed = true;
+      return decoded;
+    }
+  );
+
+  normalized = normalized.replace(
+    /<script\b(?=[^>]*\bsrc=["'][^"']*\/cdn-cgi\/scripts\/[^"']*\/email-decode\.min\.js["'])[^>]*>\s*<\/script>/gi,
+    () => {
+      changed = true;
+      return "";
+    }
+  );
+
+  if (!valid) {
+    report.valid = false;
+    report.errors.push("Cloudflare email protection marker could not be decoded.");
+  }
+
+  if (changed && !report.removed.includes("cloudflare-email-protection")) {
+    report.removed.push("cloudflare-email-protection");
+  }
+
+  return normalized;
+}
+
 function normalizeDeWebProviderHtml(providerBytes) {
   const report = {
     detected: false,
@@ -321,10 +373,11 @@ function normalizeDeWebProviderHtml(providerBytes) {
     html.includes("massaBox") ||
     html.includes("Injected DeWeb label style") ||
     html.includes("hosted on chain");
+  const hadCloudflareEmailProtection = html.includes("__cf_email__") && html.includes("data-cfemail");
 
-  report.detected = hadMassaInjection;
+  report.detected = hadMassaInjection || hadCloudflareEmailProtection;
 
-  if (!hadMassaInjection) {
+  if (!hadMassaInjection && !hadCloudflareEmailProtection) {
     return { bytes: providerBytes, report };
   }
 
@@ -332,6 +385,7 @@ function normalizeDeWebProviderHtml(providerBytes) {
   html = stripDeWebInjectedStyleFallback(html, report);
   html = stripDeWebInjectedBox(html, report);
   html = repairHeadCloseAfterDeWebStyle(html, report);
+  html = normalizeCloudflareEmailProtection(html, report);
 
   html = html
     .replace(/<body>\s*<body([^>]*)>/i, "<body$1>")
@@ -384,17 +438,36 @@ function normalizeHtmlStructureWhitespace(bytes) {
     // Normalize final document closing
     .replace(/(<\/[^>]+>)\s*(<\/body>)\s*(<\/html>)/i, "$1\n$2\n$3")
 
-    // Normalize whitespace between pure HTML tags.
+    // Canonicalize whitespace-only text nodes between HTML tags.
     // This targets provider formatting differences after DeWeb injection removal.
-    .replace(/>\s+</g, ">\n<")
-
-    // Avoid excessive blank lines
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/>\s+</g, "><")
 
     // Stable final hash
     .trim();
 
   return stringToBytes(html);
+}
+
+function compactInterTagWhitespace(bytes) {
+  if (!looksText(bytes)) return bytes;
+  return stringToBytes(bytesToString(bytes).replace(/>\s+</g, "><").trim());
+}
+
+function isHtmlContent(bytes) {
+  if (!looksText(bytes)) return false;
+  const head = bytesToString(bytes.slice(0, Math.min(bytes.length, 2048))).toLowerCase();
+
+  return head.includes("<!doctype html") || head.includes("<html") || head.includes("<head") || head.includes("</head>");
+}
+
+function isHtmlFile(filePath, bytes) {
+  const normalizedPath = String(filePath || "").split(/[?#]/, 1)[0].toLowerCase();
+
+  return normalizedPath.endsWith(".html") ||
+    normalizedPath.endsWith(".htm") ||
+    normalizedPath === "index" ||
+    normalizedPath === "/" ||
+    isHtmlContent(bytes);
 }
 
 function hasPrefix(bytes, prefix) {
@@ -695,7 +768,8 @@ function normalizeProviderBytesForPath(providerBytes, filePath) {
     };
   }
 
-  const normalized = filePath.endsWith(".html")
+  const htmlFile = isHtmlFile(filePath, providerBytes);
+  const normalized = htmlFile
     ? normalizeDeWebProviderHtml(providerBytes)
     : {
         bytes: providerBytes,
@@ -709,7 +783,7 @@ function normalizeProviderBytesForPath(providerBytes, filePath) {
       };
 
   return {
-    bytes: filePath.endsWith(".html")
+    bytes: htmlFile
       ? normalizeHtmlStructureWhitespace(normalized.bytes)
       : normalized.bytes,
     injection: normalized.report
@@ -721,7 +795,7 @@ function normalizeOnChainBytesForPath(onChainBytes, filePath) {
     return onChainBytes;
   }
 
-  return filePath.endsWith(".html")
+  return isHtmlFile(filePath, onChainBytes)
     ? normalizeHtmlStructureWhitespace(onChainBytes)
     : onChainBytes;
 }
@@ -742,8 +816,24 @@ async function compareFile(nodeUrl, websiteAddress, pageUrl, filePath) {
   const strictProviderHash = await sha256Hex(providerBytes);
   const strictOnChainHash = await sha256Hex(onChainBytes);
 
-  const providerHash = await sha256Hex(providerCompareBytes);
-  const onChainHash = await sha256Hex(onChainCompareBytes);
+  let providerHash = await sha256Hex(providerCompareBytes);
+  let onChainHash = await sha256Hex(onChainCompareBytes);
+  let finalProviderCompareBytes = providerCompareBytes;
+  let finalOnChainCompareBytes = onChainCompareBytes;
+
+  if (providerHash !== onChainHash && isHtmlFile(filePath, providerCompareBytes) && isHtmlFile(filePath, onChainCompareBytes)) {
+    const compactProviderBytes = compactInterTagWhitespace(providerCompareBytes);
+    const compactOnChainBytes = compactInterTagWhitespace(onChainCompareBytes);
+    const compactProviderHash = await sha256Hex(compactProviderBytes);
+    const compactOnChainHash = await sha256Hex(compactOnChainBytes);
+
+    if (compactProviderHash === compactOnChainHash) {
+      finalProviderCompareBytes = compactProviderBytes;
+      finalOnChainCompareBytes = compactOnChainBytes;
+      providerHash = compactProviderHash;
+      onChainHash = compactOnChainHash;
+    }
+  }
 
   const strictVerified = strictProviderHash === strictOnChainHash;
   const normalizedVerified = providerHash === onChainHash && normalizedProvider.injection.valid;
@@ -765,18 +855,18 @@ async function compareFile(nodeUrl, websiteAddress, pageUrl, filePath) {
     onChainHash,
 
     providerSize: providerBytes.length,
-    providerCompareSize: providerCompareBytes.length,
+    providerCompareSize: finalProviderCompareBytes.length,
 
     onChainSize: onChainBytes.length,
-    onChainCompareSize: onChainCompareBytes.length,
+    onChainCompareSize: finalOnChainCompareBytes.length,
 
     injection: normalizedProvider.injection,
 
     diff: normalizedVerified
       ? null
       : buildIntegrityDiff(
-          Array.from(providerCompareBytes),
-          Array.from(onChainCompareBytes),
+          Array.from(finalProviderCompareBytes),
+          Array.from(finalOnChainCompareBytes),
           providerHash,
           onChainHash
         )

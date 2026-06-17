@@ -1,5 +1,6 @@
 const ext = globalThis.browser || globalThis.chrome;
 const usesPromiseApi = typeof globalThis.browser !== "undefined";
+const INTEGRITY_CACHE_VERSION = "integrity-v4";
 
 if (typeof verifyDeWebIntegrity === "undefined" && typeof importScripts === "function") {
   importScripts("deweb-integrity.js");
@@ -390,6 +391,7 @@ function setTabState(tabId, patch) {
 function integrityCacheKey(settings, tabState, pageReport) {
   const url = safeUrl(pageReport.url || tabState.url);
   return [
+    INTEGRITY_CACHE_VERSION,
     settings.trustedNodeUrl,
     url?.origin || "",
     tabState.pageHost || tabState.siteKey || "",

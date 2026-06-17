@@ -29,6 +29,19 @@
         padding: 18px;
       }
 
+      .brand {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .brand img {
+        flex: 0 0 auto;
+        height: 34px;
+        width: 34px;
+      }
+
       h1, h2, p { margin: 0; }
       h1 { font-size: 20px; line-height: 1.2; }
       h2 { font-size: 14px; line-height: 1.2; }
@@ -210,9 +223,12 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>DeWeb Shield</h1>
-        <p id="site">Site: unknown</p>
+      <div class="brand">
+        <img src="icons/deweb-shield-48.png" alt="">
+        <div>
+          <h1>DeWeb Shield</h1>
+          <p id="site">Site: unknown</p>
+        </div>
       </div>
       <span id="badge" class="badge neutral">Unknown</span>
     </header>
