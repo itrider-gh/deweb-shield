@@ -14,6 +14,9 @@ const nodes = {
   reason: document.querySelector("#reason"),
   injection: document.querySelector("#injection"),
   files: document.querySelector("#files"),
+  progress: document.querySelector("#progress"),
+  progressBar: document.querySelector("#progress-bar"),
+  progressLabel: document.querySelector("#progress-label"),
   diff: document.querySelector("#diff"),
   diffOffset: document.querySelector("#diff-offset"),
   diffProvider: document.querySelector("#diff-provider"),
@@ -27,6 +30,7 @@ const nodes = {
 };
 
 let currentState = null;
+let refreshTimer = null;
 
 function send(message) {
   if (usesPromiseApi) {
@@ -92,6 +96,21 @@ function render(state, settings) {
   nodes.files.textContent = state.filesChecked
     ? `Files: ${state.filesVerified}/${state.filesChecked} verified${state.failedFile ? ` | Failed: ${state.failedFile}` : ""}`
     : "";
+  const progress = state.integrityProgress;
+  if (progress && (state.integrity === "checking" || progress.cached)) {
+    const percent = Number.isFinite(progress.percent)
+      ? progress.percent
+      : Math.round((Number(progress.current || 0) / Math.max(1, Number(progress.total || 1))) * 100);
+    nodes.progress.style.display = "block";
+    nodes.progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    nodes.progressLabel.textContent = progress.cached
+      ? "Integrity result served from cache"
+      : `${progress.phase || "Checking"}${progress.filePath ? `: ${progress.filePath}` : ""} (${progress.current || 0}/${progress.total || 1})`;
+  } else {
+    nodes.progress.style.display = "none";
+    nodes.progressBar.style.width = "0%";
+    nodes.progressLabel.textContent = "";
+  }
   nodes.whitelist.textContent = state.whitelisted ? "Remove trust" : "Trust and reveal more";
   nodes.whitelist.disabled = !state.siteKey;
   nodes.recheck.disabled = !state.isDeWeb;
@@ -124,7 +143,7 @@ function render(state, settings) {
     const li = document.createElement("li");
     const type = document.createElement("span");
     const url = document.createElement("strong");
-    const status = call.blocked ? "blocked" : "preview";
+    const status = call.blocked ? "blocked" : call.source === "dom" ? "declared" : "observed";
     type.textContent = `${call.kind || call.type || "request"} | ${status}`;
     url.textContent = call.url;
     li.append(type, url);
@@ -136,9 +155,24 @@ async function refresh() {
   const response = await send({ type: "GET_POPUP_STATE" });
   if (response?.ok) {
     render(response.state, response.settings);
+    if (response.state?.integrity === "checking") {
+      scheduleProgressRefresh();
+    }
   } else {
     nodes.detail.textContent = response?.error || "Background did not answer. Reload the extension from manifest.json.";
   }
+}
+
+function scheduleProgressRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(async () => {
+    if (currentState?.integrity === "checking") {
+      await refresh();
+      return;
+    }
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }, 1000);
 }
 
 nodes.whitelist.addEventListener("click", async () => {
@@ -153,6 +187,7 @@ nodes.recheck.addEventListener("click", async () => {
   const response = await send({ type: "RECHECK_INTEGRITY" });
   if (response?.ok) {
     render(response.state, response.settings);
+    scheduleProgressRefresh();
   } else {
     const error = response?.error || "Could not recheck integrity.";
     nodes.detail.textContent = error.includes("Unknown message type")

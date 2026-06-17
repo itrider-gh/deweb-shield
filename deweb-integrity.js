@@ -783,19 +783,40 @@ async function compareFile(nodeUrl, websiteAddress, pageUrl, filePath) {
   };
 }
 
-async function verifyDeWebIntegrity({ nodeUrl, pageUrl, pageHost, providerHost }) {
+async function verifyDeWebIntegrity({ nodeUrl, pageUrl, pageHost, providerHost, onProgress = () => {} }) {
+  onProgress({ phase: "Resolving MNS", current: 0, total: 1 });
+
   const mnsName = deriveMnsName(pageHost, providerHost);
   const websiteAddress = await resolveMns(nodeUrl, mnsName);
   const requestedPath = cleanResourcePath(pageUrl);
+
+  onProgress({ phase: "Reading file list", current: 0, total: 1, mnsName, websiteAddress });
 
   const fileList = await getOnChainFileList(nodeUrl, websiteAddress);
   const filesToCheck = fileList.length > 0 ? fileList : [requestedPath];
 
   const fileResults = [];
 
-  for (const filePath of filesToCheck) {
+  for (let index = 0; index < filesToCheck.length; index += 1) {
+    const filePath = filesToCheck[index];
+    onProgress({
+      phase: "Checking files",
+      current: index,
+      total: filesToCheck.length,
+      filePath,
+      mnsName,
+      websiteAddress
+    });
     fileResults.push(await compareFile(nodeUrl, websiteAddress, pageUrl, filePath));
   }
+
+  onProgress({
+    phase: "Finalizing",
+    current: filesToCheck.length,
+    total: filesToCheck.length,
+    mnsName,
+    websiteAddress
+  });
 
   const failed = fileResults.find((file) => !file.verified);
   const requestedResult =

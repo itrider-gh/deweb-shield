@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   enforceCsp: true,
   autoSyncProviders: true,
   providerSyncIntervalHours: 12,
+  integrityCacheTtlMinutes: 10,
   whitelist: {},
   trustedProviders: {
     "deweb.massa.net": true,
@@ -52,6 +53,7 @@ const stateByTab = new Map();
 const externalLogByTab = new Map();
 const cspHeaderByTab = new Map();
 const pageReportByTab = new Map();
+const integrityCacheByKey = new Map();
 let providerRegistryCache = {
   providers: {},
   fetchedAt: null,
@@ -372,6 +374,7 @@ function getTabState(tabId) {
     externalBlocked: 0,
     externalDetectedCount: 0,
     externalDetected: [],
+    integrityProgress: null,
     csp: { present: false, selfContained: false, warnings: [] },
     whitelisted: false,
     lastCheckedAt: null
@@ -382,6 +385,87 @@ function setTabState(tabId, patch) {
   const next = { ...getTabState(tabId), ...patch };
   stateByTab.set(tabId, next);
   return next;
+}
+
+function integrityCacheKey(settings, tabState, pageReport) {
+  const url = safeUrl(pageReport.url || tabState.url);
+  return [
+    settings.trustedNodeUrl,
+    url?.origin || "",
+    tabState.pageHost || tabState.siteKey || "",
+    tabState.providerHost || ""
+  ].join("|");
+}
+
+function getCachedIntegrity(cacheKey, ttlMinutes) {
+  const cached = integrityCacheByKey.get(cacheKey);
+  if (!cached) return null;
+
+  const ttlMs = Math.max(1, ttlMinutes || DEFAULT_SETTINGS.integrityCacheTtlMinutes) * 60 * 1000;
+  if (Date.now() - cached.cachedAt > ttlMs) {
+    integrityCacheByKey.delete(cacheKey);
+    return null;
+  }
+
+  return cached.result;
+}
+
+async function saveIntegrityCache() {
+  const entries = Array.from(integrityCacheByKey.entries())
+    .slice(-50)
+    .map(([key, value]) => ({ key, ...value }));
+  await storageSet("local", { integrityCacheEntries: entries });
+}
+
+async function loadIntegrityCache() {
+  const stored = await storageGet("local", { integrityCacheEntries: [] });
+  for (const entry of stored.integrityCacheEntries || []) {
+    if (entry.key && entry.result && entry.cachedAt) {
+      integrityCacheByKey.set(entry.key, {
+        cachedAt: entry.cachedAt,
+        result: entry.result
+      });
+    }
+  }
+}
+
+async function setCachedIntegrity(cacheKey, result) {
+  integrityCacheByKey.set(cacheKey, {
+    cachedAt: Date.now(),
+    result
+  });
+  await saveIntegrityCache();
+}
+
+function integrityResultPatch(result, fromCache = false) {
+  return {
+    integrity: result.verified ? "verified" : "modified",
+    integrityDetail: result.verified
+      ? `Verified ${result.filesVerified}/${result.filesChecked} files via MNS ${result.mnsName} -> ${result.websiteAddress}${result.injection?.applied ? " (DeWeb label normalized)" : ""}${fromCache ? " (cached)" : ""}`
+      : result.injection?.valid === false
+        ? `Modified: DeWeb server injection is not template-compliant (${result.injection.errors.join(" ")})${fromCache ? " (cached)" : ""}`
+        : `Modified: ${result.failedFile || result.onChainPath} differs from on-chain (${result.filesVerified}/${result.filesChecked} files verified)${fromCache ? " (cached)" : ""}`,
+    mnsName: result.mnsName,
+    websiteAddress: result.websiteAddress,
+    requestedPath: result.requestedPath,
+    onChainPath: result.onChainPath,
+    trustedNodeHash: result.onChainHash,
+    pageHash: result.providerHash,
+    integrityDiff: result.diff,
+    injectionReport: result.injection,
+    filesChecked: result.filesChecked,
+    filesVerified: result.filesVerified,
+    failedFile: result.failedFile,
+    fileResults: result.fileResults,
+    integrityProgress: {
+      phase: fromCache ? "Cached" : "Complete",
+      current: result.filesChecked || 1,
+      total: result.filesChecked || 1,
+      percent: 100,
+      cached: fromCache
+    },
+    lastCheckedAt: Date.now()
+  };
 }
 
 async function upsertExternalBlockingRule(urlValue, enabled) {
@@ -439,7 +523,7 @@ async function refreshTabPolicy(tabId, urlValue) {
   });
 }
 
-async function compareWithTrustedNode(tabId, pageReport) {
+async function compareWithTrustedNode(tabId, pageReport, options = {}) {
   const settings = await getSettings();
   const trustedNode = safeUrl(settings.trustedNodeUrl);
   if (!trustedNode) {
@@ -460,39 +544,56 @@ async function compareWithTrustedNode(tabId, pageReport) {
 
   try {
     const tabState = getTabState(tabId);
+    const cacheKey = integrityCacheKey(settings, tabState, pageReport);
+    const cached = options.force ? null : getCachedIntegrity(cacheKey, settings.integrityCacheTtlMinutes);
+    if (cached) {
+      return setTabState(tabId, integrityResultPatch(cached, true));
+    }
+
+    setTabState(tabId, {
+      integrity: "checking",
+      integrityDetail: "Checking trusted node...",
+      integrityProgress: {
+        phase: "Starting",
+        current: 0,
+        total: 1,
+        percent: 0,
+        cached: false
+      }
+    });
+
     const result = await verifyDeWebIntegrity({
       nodeUrl: settings.trustedNodeUrl,
       pageUrl: pageReport.url,
       pageHost: tabState.pageHost || tabState.siteKey,
-      providerHost: tabState.providerHost
+      providerHost: tabState.providerHost,
+      onProgress: (progress) => {
+        const total = Math.max(1, Number(progress.total || 1));
+        const current = Math.max(0, Number(progress.current || 0));
+        const percent = Math.max(0, Math.min(99, Math.round((current / total) * 100)));
+        setTabState(tabId, {
+          integrity: "checking",
+          integrityDetail: progress.filePath
+            ? `${progress.phase}: ${progress.filePath}`
+            : progress.phase || "Checking trusted node...",
+          integrityProgress: {
+            ...progress,
+            current,
+            total,
+            percent,
+            cached: false
+          }
+        });
+      }
     });
-
-    return setTabState(tabId, {
-      integrity: result.verified ? "verified" : "modified",
-      integrityDetail: result.verified
-        ? `Verified ${result.filesVerified}/${result.filesChecked} files via MNS ${result.mnsName} -> ${result.websiteAddress}${result.injection?.applied ? " (DeWeb label normalized)" : ""}`
-        : result.injection?.valid === false
-          ? `Modified: DeWeb server injection is not template-compliant (${result.injection.errors.join(" ")})`
-          : `Modified: ${result.failedFile || result.onChainPath} differs from on-chain (${result.filesVerified}/${result.filesChecked} files verified)`,
-      mnsName: result.mnsName,
-      websiteAddress: result.websiteAddress,
-      requestedPath: result.requestedPath,
-      onChainPath: result.onChainPath,
-      trustedNodeHash: result.onChainHash,
-      pageHash: result.providerHash,
-      integrityDiff: result.diff,
-      injectionReport: result.injection,
-      filesChecked: result.filesChecked,
-      filesVerified: result.filesVerified,
-      failedFile: result.failedFile,
-      fileResults: result.fileResults,
-      lastCheckedAt: Date.now()
-    });
+    await setCachedIntegrity(cacheKey, result);
+    return setTabState(tabId, integrityResultPatch(result, false));
   } catch (error) {
     return setTabState(tabId, {
       integrity: "unknown",
       integrityDetail: `Trusted-node verification unavailable: ${error.message}`,
       pageHash: pageReport.documentHash,
+      integrityProgress: null,
       lastCheckedAt: Date.now()
     });
   }
@@ -505,18 +606,18 @@ function recordExternalRequest(details) {
   const tabState = getTabState(tabId);
   if (!tabState.isDeWeb || !tabState.shouldBlock || !isExternalUrl(details.url, tabState.url)) return;
 
-  const list = externalLogByTab.get(tabId) || [];
-  list.push({
+  const nextList = upsertExternalRequest(externalLogByTab.get(tabId) || [], {
     url: details.url,
     type: details.type,
     timeStamp: details.timeStamp,
-    blocked: true
+    blocked: true,
+    source: "network"
   });
-  externalLogByTab.set(tabId, list.slice(-100));
+  externalLogByTab.set(tabId, nextList);
   setTabState(tabId, {
-    externalBlocked: list.length,
-    externalDetectedCount: list.length,
-    externalDetected: list.slice(-100)
+    externalBlocked: nextList.filter((entry) => entry.blocked).length,
+    externalDetectedCount: nextList.length,
+    externalDetected: nextList
   });
 }
 
@@ -527,14 +628,13 @@ function rememberRequestedExternal(details, blocked) {
   const tabState = getTabState(tabId);
   if (!tabState.isDeWeb || !isExternalUrl(details.url, tabState.url)) return;
 
-  const list = externalLogByTab.get(tabId) || [];
-  list.push({
+  const nextList = upsertExternalRequest(externalLogByTab.get(tabId) || [], {
     url: details.url,
     type: details.type,
     timeStamp: details.timeStamp || Date.now(),
-    blocked
+    blocked,
+    source: "network"
   });
-  const nextList = list.slice(-100);
   externalLogByTab.set(tabId, nextList);
   setTabState(tabId, {
     externalBlocked: nextList.filter((entry) => entry.blocked).length,
@@ -543,22 +643,56 @@ function rememberRequestedExternal(details, blocked) {
   });
 }
 
-function mergeExternalRequests(networkRequests, pageRequests) {
-  const merged = [...networkRequests];
-  const seen = new Set(merged.map((entry) => `${entry.type || entry.kind}:${entry.url}`));
+function externalRequestKey(entry) {
+  return `${entry.type || entry.kind || "request"}:${entry.url}`;
+}
 
-  for (const request of pageRequests) {
-    const key = `${request.type || request.kind}:${request.url}`;
-    if (!seen.has(key)) {
-      merged.push({
-        ...request,
-        blocked: false
-      });
-      seen.add(key);
-    }
+function mergeExternalRequestEntry(previous, next) {
+  if (!previous) {
+    return {
+      ...next,
+      blocked: Boolean(next.blocked)
+    };
   }
 
-  return merged.slice(-100);
+  return {
+    ...previous,
+    ...next,
+    blocked: Boolean(previous.blocked || next.blocked),
+    source: previous.source === "network" || next.source === "network" ? "network" : previous.source || next.source,
+    timeStamp: Math.max(Number(previous.timeStamp || 0), Number(next.timeStamp || 0)) || previous.timeStamp || next.timeStamp
+  };
+}
+
+function dedupeExternalRequests(requests) {
+  const byKey = new Map();
+  for (const request of requests) {
+    if (!request?.url) continue;
+    const key = externalRequestKey(request);
+    byKey.set(key, mergeExternalRequestEntry(byKey.get(key), request));
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => Number(a.timeStamp || 0) - Number(b.timeStamp || 0))
+    .slice(-100);
+}
+
+function upsertExternalRequest(requests, request) {
+  return dedupeExternalRequests([...requests, request]);
+}
+
+function mergeExternalRequests(networkRequests, pageRequests) {
+  return dedupeExternalRequests([
+    ...networkRequests.map((request) => ({
+      ...request,
+      source: request.source || "network"
+    })),
+    ...pageRequests.map((request) => ({
+      ...request,
+      blocked: false,
+      source: request.source || "dom",
+      timeStamp: request.timeStamp || Date.now()
+    }))
+  ]);
 }
 
 function normalizeBlockedState(requests, shouldBlock) {
@@ -640,7 +774,10 @@ ext.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
-loadProviderRegistryCache()
+Promise.all([
+  loadProviderRegistryCache(),
+  loadIntegrityCache()
+])
   .then(() => refreshProviderRegistry(false))
   .catch(console.error);
 
@@ -682,12 +819,12 @@ async function handleRuntimeMessage(message, sender) {
     const cspValue = cspHeaderByTab.get(tabId) || message.report.cspMeta || "";
     const csp = summarizeCsp(cspValue);
     const networkRequests = externalLogByTab.get(tabId) || [];
+    const previous = getTabState(tabId);
     const shouldBlock = detection.isDeWeb && settings.blockExternalCalls && !previous.whitelisted;
     const externalDetected = normalizeBlockedState(
       mergeExternalRequests(networkRequests, message.report.externalRequests || []),
       shouldBlock
     );
-    const previous = getTabState(tabId);
     const providerTrusted = Boolean(findProviderMatch(detection.pageHost || detection.providerHost, trustedProviders));
 
     let next = setTabState(tabId, {
@@ -700,7 +837,8 @@ async function handleRuntimeMessage(message, sender) {
       externalBlocked: externalDetected.filter((entry) => entry.blocked).length,
       pageHash: message.report.documentHash,
       integrity: detection.isDeWeb ? "checking" : "unknown",
-      integrityDetail: detection.isDeWeb ? "Checking trusted node..." : "Not detected as a DeWeb site."
+      integrityDetail: detection.isDeWeb ? "Checking trusted node..." : "Not detected as a DeWeb site.",
+      integrityProgress: detection.isDeWeb ? { phase: "Queued", current: 0, total: 1, percent: 0 } : null
     });
 
     if (detection.isDeWeb && settings.trustedNodeUrl) {
@@ -753,7 +891,7 @@ async function handleRuntimeMessage(message, sender) {
       url: activeTab.url,
       documentHash: ""
     };
-    const next = await compareWithTrustedNode(activeTab.id, report);
+    const next = await compareWithTrustedNode(activeTab.id, report, { force: true });
     return { ok: true, state: next, settings: await getSettings() };
   }
 
