@@ -77,15 +77,10 @@ function render(state, settings) {
   nodes.providerTrust.textContent = state.providerTrusted ? "Registry trusted" : "Unknown";
   nodes.trustedNode.textContent = trustedNodeLabel(settings);
   nodes.integrity.textContent = labelIntegrity(state.integrity);
-  nodes.external.textContent = `${state.externalDetectedCount || state.externalDetected?.length || 0} detected / ${state.externalBlocked || 0} blocked`;
+  nodes.external.textContent = `${state.externalDetectedCount || state.externalDetected?.length || 0} in code`;
   nodes.csp.textContent = state.csp?.selfContained ? "Self-contained" : state.csp?.present ? "Warnings" : "Missing";
   nodes.detail.textContent = state.integrityDetail || "No details yet.";
-  const hiddenNote = state.shouldBlock && (state.externalBlocked || 0) > 0
-    ? "More requests may appear after trusting because blocked scripts cannot run."
-    : "";
-  nodes.reason.textContent = [state.reason ? `Detection: ${state.reason}` : "", hiddenNote]
-    .filter(Boolean)
-    .join(" | ");
+  nodes.reason.textContent = state.reason ? `Detection: ${state.reason}` : "";
   if (state.injectionReport?.detected) {
     nodes.injection.textContent = state.injectionReport.valid
       ? `Server injection normalized: ${state.injectionReport.removed.join(", ")}`
@@ -134,7 +129,7 @@ function render(state, settings) {
   const calls = state.externalDetected || [];
   if (calls.length === 0) {
     const empty = document.createElement("li");
-    empty.textContent = "No external activity detected.";
+    empty.textContent = "No external links found in page code.";
     nodes.calls.append(empty);
     return;
   }
@@ -143,8 +138,7 @@ function render(state, settings) {
     const li = document.createElement("li");
     const type = document.createElement("span");
     const url = document.createElement("strong");
-    const status = call.blocked ? "blocked" : call.source === "dom" ? "declared" : "observed";
-    type.textContent = `${call.kind || call.type || "request"} | ${status}`;
+    type.textContent = call.kind || call.type || "url";
     url.textContent = call.url;
     li.append(type, url);
     nodes.calls.append(li);

@@ -615,9 +615,7 @@ function recordExternalRequest(details) {
   });
   externalLogByTab.set(tabId, nextList);
   setTabState(tabId, {
-    externalBlocked: nextList.filter((entry) => entry.blocked).length,
-    externalDetectedCount: nextList.length,
-    externalDetected: nextList
+    externalBlocked: nextList.filter((entry) => entry.blocked).length
   });
 }
 
@@ -637,9 +635,7 @@ function rememberRequestedExternal(details, blocked) {
   });
   externalLogByTab.set(tabId, nextList);
   setTabState(tabId, {
-    externalBlocked: nextList.filter((entry) => entry.blocked).length,
-    externalDetectedCount: nextList.length,
-    externalDetected: nextList.slice(-100)
+    externalBlocked: nextList.filter((entry) => entry.blocked).length
   });
 }
 
@@ -664,7 +660,7 @@ function mergeExternalRequestEntry(previous, next) {
   };
 }
 
-function dedupeExternalRequests(requests) {
+function dedupeExternalRequests(requests, limit = 100) {
   const byKey = new Map();
   for (const request of requests) {
     if (!request?.url) continue;
@@ -673,33 +669,20 @@ function dedupeExternalRequests(requests) {
   }
   return Array.from(byKey.values())
     .sort((a, b) => Number(a.timeStamp || 0) - Number(b.timeStamp || 0))
-    .slice(-100);
+    .slice(-limit);
 }
 
 function upsertExternalRequest(requests, request) {
   return dedupeExternalRequests([...requests, request]);
 }
 
-function mergeExternalRequests(networkRequests, pageRequests) {
-  return dedupeExternalRequests([
-    ...networkRequests.map((request) => ({
-      ...request,
-      source: request.source || "network"
-    })),
-    ...pageRequests.map((request) => ({
-      ...request,
-      blocked: false,
-      source: request.source || "dom",
-      timeStamp: request.timeStamp || Date.now()
-    }))
-  ]);
-}
-
-function normalizeBlockedState(requests, shouldBlock) {
-  return requests.map((request) => ({
-    ...request,
-    blocked: shouldBlock ? Boolean(request.blocked) : false
-  }));
+function normalizeExternalLinks(links) {
+  return dedupeExternalRequests((links || []).map((link) => ({
+    ...link,
+    blocked: false,
+    source: "code",
+    timeStamp: link.timeStamp || link.at || Date.now()
+  })), 200);
 }
 
 function recordMainFrameHeaders(details) {
@@ -806,10 +789,6 @@ async function handleRuntimeMessage(message, sender) {
   const tabId = sender.tab?.id ?? message.tabId;
   const messageType = message.type;
 
-  if (messageType === "external_request") {
-    return { ok: true };
-  }
-
   if (messageType === "PAGE_REPORT" && tabId !== undefined) {
     await refreshTabPolicy(tabId, message.report.url);
     pageReportByTab.set(tabId, message.report);
@@ -818,13 +797,10 @@ async function handleRuntimeMessage(message, sender) {
     const detection = detectDeWeb(message.report.url, trustedProviders);
     const cspValue = cspHeaderByTab.get(tabId) || message.report.cspMeta || "";
     const csp = summarizeCsp(cspValue);
-    const networkRequests = externalLogByTab.get(tabId) || [];
     const previous = getTabState(tabId);
     const shouldBlock = detection.isDeWeb && settings.blockExternalCalls && !previous.whitelisted;
-    const externalDetected = normalizeBlockedState(
-      mergeExternalRequests(networkRequests, message.report.externalRequests || []),
-      shouldBlock
-    );
+    const networkRequests = externalLogByTab.get(tabId) || [];
+    const externalLinks = normalizeExternalLinks(message.report.externalLinks || message.report.externalRequests || []);
     const providerTrusted = Boolean(findProviderMatch(detection.pageHost || detection.providerHost, trustedProviders));
 
     let next = setTabState(tabId, {
@@ -832,9 +808,9 @@ async function handleRuntimeMessage(message, sender) {
       csp,
       providerTrusted,
       shouldBlock,
-      externalDetected: externalDetected.slice(-100),
-      externalDetectedCount: externalDetected.length,
-      externalBlocked: externalDetected.filter((entry) => entry.blocked).length,
+      externalDetected: externalLinks.slice(-200),
+      externalDetectedCount: externalLinks.length,
+      externalBlocked: shouldBlock ? networkRequests.filter((entry) => entry.blocked).length : 0,
       pageHash: message.report.documentHash,
       integrity: detection.isDeWeb ? "checking" : "unknown",
       integrityDetail: detection.isDeWeb ? "Checking trusted node..." : "Not detected as a DeWeb site.",

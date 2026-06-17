@@ -5,7 +5,7 @@ DeWeb Shield is a Chromium Manifest V3 extension for Massa DeWeb browsing.
 Security model:
 
 - the browser loads the DeWeb site through the configured provider
-- the extension monitors external calls, CSP, and page integrity signals
+- the extension lists external links referenced by the page code, monitors CSP, and checks integrity signals
 - a trusted Massa node is configured as the source of truth for verification
 
 Default trusted node:
@@ -18,14 +18,14 @@ http://127.0.0.1:33035
 
 - Detects likely DeWeb pages through `.massa`, DeWeb provider hosts, and Massa query parameters.
 - Blocks third-party resources on detected DeWeb sites through `declarativeNetRequest`.
-- Detects DOM resources plus `fetch`, `XMLHttpRequest`, `WebSocket`, and `sendBeacon`.
+- Lists external URLs referenced by the page DOM and inline code.
 - Reads CSP from response headers and meta tags.
 - Provides a popup status view:
   - site
   - provider
   - trusted node
   - integrity
-  - external calls
+  - external links found in code
   - CSP
 - Provides settings for:
   - trusted node URL

@@ -1,11 +1,15 @@
 const ext = globalThis.browser || globalThis.chrome;
 
-const externalRequests = [];
+const externalLinks = [];
 const resourceSelectors = [
   ["script[src]", "src", "script"],
   ["link[href]", "href", "link"],
+  ["a[href]", "href", "anchor"],
+  ["area[href]", "href", "area"],
   ["img[src]", "src", "image"],
   ["iframe[src]", "src", "iframe"],
+  ["embed[src]", "src", "embed"],
+  ["object[data]", "data", "object"],
   ["source[src]", "src", "source"],
   ["video[src]", "src", "video"],
   ["audio[src]", "src", "audio"],
@@ -39,10 +43,10 @@ function isExternalUrl(candidate, pageUrl) {
 function rememberExternal(kind, url) {
   const absolute = absoluteUrl(url);
   if (!absolute || !isExternalUrl(absolute, window.location.href)) return;
-  if (externalRequests.some((entry) => entry.url === absolute && entry.kind === kind)) return;
+  if (externalLinks.some((entry) => entry.url === absolute)) return;
 
-  externalRequests.push({ kind, url: absolute, at: Date.now() });
-  if (externalRequests.length > 100) externalRequests.shift();
+  externalLinks.push({ kind, url: absolute, source: "code", at: Date.now() });
+  if (externalLinks.length > 200) externalLinks.shift();
 }
 
 function collectDomExternalResources() {
@@ -50,6 +54,14 @@ function collectDomExternalResources() {
     document.querySelectorAll(selector).forEach((node) => {
       rememberExternal(kind, node.getAttribute(attribute));
     });
+  }
+}
+
+function collectInlineExternalLinks() {
+  const html = document.documentElement?.outerHTML || "";
+  const matches = html.matchAll(/https?:\/\/[^\s"'<>`\\)]+|\/\/[^\s"'<>`\\)]+/gi);
+  for (const match of matches) {
+    rememberExternal("url", match[0]);
   }
 }
 
@@ -74,6 +86,7 @@ function sendMessage(message) {
 
 async function sendReport() {
   collectDomExternalResources();
+  collectInlineExternalLinks();
   sendMessage({
     type: "PAGE_REPORT",
     report: {
@@ -81,18 +94,10 @@ async function sendReport() {
       title: document.title,
       cspMeta: getCspMeta(),
       documentHash: await hashDocument(),
-      externalRequests: externalRequests.slice(-100)
+      externalLinks: externalLinks.slice(-200)
     }
   });
 }
-
-window.addEventListener("message", (event) => {
-  if (event.source !== window) return;
-  if (!event.data || event.data.source !== "DEWEB_SHIELD") return;
-
-  rememberExternal(event.data.api, event.data.url);
-  sendReport();
-});
 
 if (document.documentElement) {
   const observer = new MutationObserver(() => {
@@ -102,7 +107,7 @@ if (document.documentElement) {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["src", "href", "action"]
+    attributeFilter: ["src", "href", "action", "data"]
   });
 }
 

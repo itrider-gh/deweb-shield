@@ -27,17 +27,6 @@
         "<all_urls>"
       ],
       "js": [
-        "injected.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false,
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
         "content-script.js"
       ],
       "run_at": "document_start",
