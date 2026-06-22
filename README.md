@@ -11,7 +11,7 @@ Security model:
 Default trusted node:
 
 ```text
-http://127.0.0.1:33035
+https://mainnet.massa.net/api/v2
 ```
 
 <img width="1892" height="1033" alt="Capture d’écran 2026-06-17 161342" src="https://github.com/user-attachments/assets/5aee5d0e-d53c-4477-b3f9-8a2b505fa710" />
@@ -33,13 +33,15 @@ http://127.0.0.1:33035
 - Provides settings for:
   - trusted node URL
   - provider registry URL
-  - local-only or remote trusted node mode
+  - local-provider trust toggle
   - unknown-provider policy
   - external-call blocking
   - CSP warnings
   - automatic provider sync from GitHub
   - trusted providers
   - site whitelist
+
+The local-provider toggle automatically adds `localhost`, `127.0.0.1`, and `::1` to trusted providers while keeping the GitHub registry and manual trusted providers active.
 
 ## Provider registry
 

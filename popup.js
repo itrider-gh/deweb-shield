@@ -209,7 +209,21 @@ nodes.recheck.addEventListener("click", async () => {
 });
 
 nodes.options.addEventListener("click", () => {
-  ext.runtime.openOptionsPage();
+  if (ext.runtime.openOptionsPage) {
+    if (usesPromiseApi) {
+      ext.runtime.openOptionsPage()
+        .catch(() => ext.tabs.create({ url: ext.runtime.getURL("options.html") }));
+      return;
+    }
+
+    ext.runtime.openOptionsPage(() => {
+      if (!ext.runtime.lastError) return;
+      ext.tabs.create({ url: ext.runtime.getURL("options.html") });
+    });
+    return;
+  }
+
+  ext.tabs.create({ url: ext.runtime.getURL("options.html") });
 });
 
 refresh().catch((error) => {

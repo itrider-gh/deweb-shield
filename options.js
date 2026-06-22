@@ -6,6 +6,7 @@ const saved = document.querySelector("#saved");
 const controls = {
   trustedNodeUrl: document.querySelector("#trusted-node-url"),
   providerRegistryUrl: document.querySelector("#provider-registry-url"),
+  trustLocalProvider: document.querySelector("#trust-local-provider"),
   askBeforeUnknownProvider: document.querySelector("#ask-before-unknown"),
   blockExternalCalls: document.querySelector("#block-external"),
   enforceCsp: document.querySelector("#enforce-csp"),
@@ -71,7 +72,7 @@ async function load() {
   const settings = response.settings;
   controls.trustedNodeUrl.value = settings.trustedNodeUrl;
   controls.providerRegistryUrl.value = settings.providerRegistryUrl;
-  form.elements.mode.value = settings.mode;
+  controls.trustLocalProvider.checked = settings.trustLocalProvider;
   controls.askBeforeUnknownProvider.checked = settings.askBeforeUnknownProvider;
   controls.blockExternalCalls.checked = settings.blockExternalCalls;
   controls.enforceCsp.checked = settings.enforceCsp;
@@ -88,7 +89,7 @@ form.addEventListener("submit", async (event) => {
   const settings = {
     trustedNodeUrl: controls.trustedNodeUrl.value.trim(),
     providerRegistryUrl: controls.providerRegistryUrl.value.trim(),
-    mode: form.elements.mode.value,
+    trustLocalProvider: controls.trustLocalProvider.checked,
     askBeforeUnknownProvider: controls.askBeforeUnknownProvider.checked,
     blockExternalCalls: controls.blockExternalCalls.checked,
     enforceCsp: controls.enforceCsp.checked,

@@ -121,7 +121,7 @@
       <form id="settings-form">
         <label>
           Trusted Massa node RPC URL
-          <input id="trusted-node-url" name="trustedNodeUrl" type="url" placeholder="http://127.0.0.1:33035" required>
+          <input id="trusted-node-url" name="trustedNodeUrl" type="url" placeholder="https://mainnet.massa.net/api/v2" required>
         </label>
 
         <label>
@@ -130,13 +130,8 @@
         </label>
 
         <fieldset>
-          <legend>Mode</legend>
-          <label class="choice"><input type="radio" name="mode" value="local">Local node only</label>
-          <label class="choice"><input type="radio" name="mode" value="remote">Remote trusted node</label>
-        </fieldset>
-
-        <fieldset>
           <legend>Protection</legend>
+          <label class="choice"><input id="trust-local-provider" type="checkbox" name="trustLocalProvider">Trust local provider</label>
           <label class="choice"><input id="ask-before-unknown" type="checkbox" name="askBeforeUnknownProvider">Ask before trusting unknown provider</label>
           <label class="choice"><input id="block-external" type="checkbox" name="blockExternalCalls">Block external calls on DeWeb sites</label>
           <label class="choice"><input id="enforce-csp" type="checkbox" name="enforceCsp">Flag missing or loose CSP</label>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DeWeb Shield",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Protect Massa DeWeb browsing with external-call blocking, CSP checks, and trusted-node integrity status.",
   "icons": {
     "16": "icons/deweb-shield-16.png",
@@ -45,5 +45,8 @@
     },
     "default_popup": "popup.html"
   },
-  "options_page": "options.html"
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
 }

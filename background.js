@@ -7,9 +7,9 @@ if (typeof verifyDeWebIntegrity === "undefined" && typeof importScripts === "fun
 }
 
 const DEFAULT_SETTINGS = {
-  trustedNodeUrl: "http://127.0.0.1:33035",
+  trustedNodeUrl: "https://mainnet.massa.net/api/v2",
   providerRegistryUrl: "https://raw.githubusercontent.com/massalabs/DeWeb-Providers/main/providers.yaml",
-  mode: "local",
+  trustLocalProvider: false,
   askBeforeUnknownProvider: true,
   blockExternalCalls: true,
   enforceCsp: true,
@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
     "massahub.network": true
   }
 };
+
+const LEGACY_DEFAULT_TRUSTED_NODE_URL = "http://127.0.0.1:33035";
 
 const EXTERNAL_RESOURCE_TYPES = [
   "sub_frame",
@@ -70,7 +72,11 @@ function safeUrl(value) {
 }
 
 function hostWithoutPort(host) {
-  return String(host || "").replace(/:\d+$/, "").toLowerCase();
+  const clean = String(host || "").replace(/^\[|\]$/g, "").toLowerCase();
+  if ((clean.match(/:/g) || []).length > 1) {
+    return clean;
+  }
+  return clean.replace(/:\d+$/, "");
 }
 
 function isPrivateHost(host) {
@@ -91,18 +97,43 @@ function isExternalUrl(candidate, pageUrl) {
   return url.origin !== page.origin;
 }
 
+function normalizeTrustLocalProvider(settings = {}) {
+  if (typeof settings.trustLocalProvider === "boolean") {
+    return settings.trustLocalProvider;
+  }
+  return settings.mode === "local" || settings.mode === "local-provider";
+}
+
 function normalizeSettings(settings = {}) {
+  const { mode: _legacyMode, ...rest } = settings;
+  const trustLocalProvider = normalizeTrustLocalProvider(settings);
+  const trustedNodeUrl = !settings.trustedNodeUrl || settings.trustedNodeUrl === LEGACY_DEFAULT_TRUSTED_NODE_URL
+    ? DEFAULT_SETTINGS.trustedNodeUrl
+    : settings.trustedNodeUrl;
+  const trustedProviders = {
+    ...DEFAULT_SETTINGS.trustedProviders,
+    ...(settings.trustedProviders || {})
+  };
+
   return {
     ...DEFAULT_SETTINGS,
-    ...settings,
+    ...rest,
+    trustedNodeUrl,
+    trustLocalProvider,
     whitelist: {
       ...DEFAULT_SETTINGS.whitelist,
       ...(settings.whitelist || {})
     },
-    trustedProviders: {
-      ...DEFAULT_SETTINGS.trustedProviders,
-      ...(settings.trustedProviders || {})
-    }
+    trustedProviders
+  };
+}
+
+function addLocalProviders(trustedProviders = {}) {
+  return {
+    ...trustedProviders,
+    localhost: true,
+    "127.0.0.1": true,
+    "::1": true
   };
 }
 
@@ -206,10 +237,14 @@ async function loadProviderRegistryCache() {
 async function getMergedTrustedProviders() {
   const settings = await getSettings();
   const registry = settings.autoSyncProviders ? await refreshProviderRegistry(false) : providerRegistryCache;
-  return {
+  let trustedProviders = {
     ...settings.trustedProviders,
     ...(registry.providers || {})
   };
+  if (settings.trustLocalProvider) {
+    trustedProviders = addLocalProviders(trustedProviders);
+  }
+  return trustedProviders;
 }
 
 function isKnownDeWebHost(host) {
@@ -370,7 +405,19 @@ function updateSessionRules(options) {
 }
 
 async function getSettings() {
-  return normalizeSettings(await storageGet("sync", DEFAULT_SETTINGS));
+  const stored = await storageGet("sync", DEFAULT_SETTINGS);
+  const normalized = normalizeSettings(stored);
+  if (
+    stored.trustedNodeUrl === LEGACY_DEFAULT_TRUSTED_NODE_URL ||
+    stored.mode === "local" ||
+    stored.mode === "remote" ||
+    stored.mode === "local-provider" ||
+    stored.mode === "trusted-node" ||
+    typeof stored.trustLocalProvider !== "boolean"
+  ) {
+    await storageSet("sync", normalized);
+  }
+  return normalized;
 }
 
 async function saveSettings(settings) {
@@ -546,14 +593,6 @@ async function compareWithTrustedNode(tabId, pageReport, options = {}) {
     return setTabState(tabId, {
       integrity: "unknown",
       integrityDetail: "Trusted node URL is invalid.",
-      lastCheckedAt: Date.now()
-    });
-  }
-
-  if (settings.mode === "local" && !isPrivateHost(trustedNode.hostname)) {
-    return setTabState(tabId, {
-      integrity: "unknown",
-      integrityDetail: "Local node mode requires localhost or a private IP.",
       lastCheckedAt: Date.now()
     });
   }
